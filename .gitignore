@@ -1,0 +1,15 @@
+# Môi trường ảo
+.venv/
+venv/
+ENV/
+
+# Bộ nhớ đệm Python
+**/__pycache__/
+*.pyc
+
+# Thư mục dữ liệu mạng và mô hình nặng
+data/
+models/*.joblib
+
+# Cấu hình VS Code cá nhân
+.vscode/
