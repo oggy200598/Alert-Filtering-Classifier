@@ -1,4 +1,4 @@
-"""Streamlit interface for the 22-feature Alert Filtering Classifier (Supports Big Files & Parquet)."""
+"""Streamlit interface for the 22-feature Alert Filtering Classifier (Multi-file Big Data Support)."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def attack_probability(model, features: pd.DataFrame, metadata: dict) -> np.ndar
 # --- MAIN INTERFACE ---
 
 st.title("🛡️ Alert Filtering Classifier")
-st.write("Tải tập dữ liệu (**CSV** hoặc **Parquet**) có 22 đặc trưng Lightweight Ontology để phân loại BENIGN hoặc ATTACK.")
+st.write("Tải các tập dữ liệu (**CSV** hoặc **Parquet**) có 22 đặc trưng Lightweight Ontology để phân loại BENIGN hoặc ATTACK.")
 
 try:
     model, metadata = load_artifacts()
@@ -110,21 +110,32 @@ except Exception as exc:
 
 feature_names = metadata["feature_names"]
 
-# Cho phép nhận file cả dạng CSV lẫn Parquet
-uploaded_file = st.file_uploader(
-    "Chọn tệp dữ liệu (Hỗ trợ CSV & Parquet, dung lượng lớn)", 
-    type=["csv", "parquet"]
+# 1. Widget cho phép tải NHIỀU file cùng lúc
+uploaded_files = st.file_uploader(
+    "Chọn các tệp dữ liệu (Hỗ trợ chọn nhiều file CSV & Parquet)", 
+    type=["csv", "parquet"],
+    accept_multiple_files=True
 )
 
-if uploaded_file is not None:
+# 2. ĐẶT ĐOẠN CODE CỦA BẠN VÀO ĐÂY (Xử lý khi người dùng chọn file)
+if uploaded_files:
     try:
-        with st.spinner("Đang tải và xử lý dữ liệu..."):
-            uploaded_data = read_uploaded_file(uploaded_file)
+        with st.spinner("Đang tải và gộp dữ liệu từ các file..."):
+            data_frames = []
+            for file in uploaded_files:
+                df = read_uploaded_file(file)
+                data_frames.append(df)
+            
+            # Gộp tất cả các file lại thành 1 DataFrame duy nhất
+            uploaded_data = pd.concat(data_frames, ignore_index=True)
             features, missing_columns = prepare_features(uploaded_data, feature_names)
+
+        st.success(f"Đã tải thành công {len(uploaded_files)} tệp với tổng cộng {len(uploaded_data):,} dòng dữ liệu!")
     except Exception as exc:
         st.error(f"Không thể đọc hoặc chuẩn hóa tệp: {exc}")
         st.stop()
 
+    # 3. Hiển thị dữ liệu và chạy mô hình dự đoán
     st.subheader("Dữ liệu đầu vào (5 dòng đầu)")
     st.dataframe(uploaded_data.head())
 
@@ -152,11 +163,11 @@ if uploaded_file is not None:
             col1.metric("BENIGN", benign_count)
             col2.metric("ATTACK", attack_count)
 
-            st.subheader("Xem trước kết quả")
+            st.subheader("Xem trước kết quả (100 dòng đầu)")
             st.dataframe(result.head(100), use_container_width=True)
 
-            # --- TÙY CHỌN XUẤT FILE FILE KẾT QUẢ ---
-            st.subheader("📥 Tải về kết quả")
+            # --- Xuất file kết quả ---
+            st.subheader("📥 Tải về kết quả gộp")
             export_format = st.radio("Chọn định dạng file tải về:", ["Parquet (Tối ưu file lớn)", "CSV"], horizontal=True)
 
             if export_format == "Parquet (Tối ưu file lớn)":
@@ -165,14 +176,14 @@ if uploaded_file is not None:
                 st.download_button(
                     label="📥 Tải kết quả Parquet",
                     data=buffer.getvalue(),
-                    file_name="afc_predictions.parquet",
+                    file_name="afc_predictions_combined.parquet",
                     mime="application/octet-stream",
                 )
             else:
                 st.download_button(
                     label="📥 Tải kết quả CSV",
                     data=result.to_csv(index=False).encode("utf-8-sig"),
-                    file_name="afc_predictions.csv",
+                    file_name="afc_predictions_combined.csv",
                     mime="text/csv",
                 )
 
