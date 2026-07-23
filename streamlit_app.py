@@ -1,4 +1,4 @@
-"""Streamlit interface for the 22-feature Alert Filtering Classifier (Multi-file Big Data Support)."""
+"""Streamlit interface for the 22-feature Alert Filtering Classifier (Multi-file Big Data & Parquet Support)."""
 
 from __future__ import annotations
 
@@ -110,14 +110,13 @@ except Exception as exc:
 
 feature_names = metadata["feature_names"]
 
-# 1. Widget cho phép tải NHIỀU file cùng lúc
+# Widget cho phép tải nhiều file cùng lúc
 uploaded_files = st.file_uploader(
     "Chọn các tệp dữ liệu (Hỗ trợ chọn nhiều file CSV & Parquet)", 
     type=["csv", "parquet"],
     accept_multiple_files=True
 )
 
-# 2. ĐẶT ĐOẠN CODE CỦA BẠN VÀO ĐÂY (Xử lý khi người dùng chọn file)
 if uploaded_files:
     try:
         with st.spinner("Đang tải và gộp dữ liệu từ các file..."):
@@ -135,7 +134,6 @@ if uploaded_files:
         st.error(f"Không thể đọc hoặc chuẩn hóa tệp: {exc}")
         st.stop()
 
-    # 3. Hiển thị dữ liệu và chạy mô hình dự đoán
     st.subheader("Dữ liệu đầu vào (5 dòng đầu)")
     st.dataframe(uploaded_data.head())
 
@@ -164,7 +162,8 @@ if uploaded_files:
             col2.metric("ATTACK", attack_count)
 
             st.subheader("Xem trước kết quả (100 dòng đầu)")
-            st.dataframe(result.head(100), use_container_width=True)
+            # Đã sửa use_container_width=True thành width="stretch"
+            st.dataframe(result.head(100), width="stretch")
 
             # --- Xuất file kết quả ---
             st.subheader("📥 Tải về kết quả gộp")
