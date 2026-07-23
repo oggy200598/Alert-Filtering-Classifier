@@ -1,4 +1,4 @@
-"""Streamlit interface for the 22-feature Alert Filtering Classifier (Multi-file Big Data & Parquet Support)."""
+"""Streamlit interface for the 22-feature Alert Filtering Classifier (Multi-file Big Data, Parquet & Visualizations Support)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,10 @@ import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
+import plotly.express as px
+import seaborn as sns
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, classification_report, confusion_matrix
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
@@ -110,7 +114,6 @@ except Exception as exc:
 
 feature_names = metadata["feature_names"]
 
-# Widget cho phép tải nhiều file cùng lúc
 uploaded_files = st.file_uploader(
     "Chọn các tệp dữ liệu (Hỗ trợ chọn nhiều file CSV & Parquet)", 
     type=["csv", "parquet"],
@@ -125,7 +128,6 @@ if uploaded_files:
                 df = read_uploaded_file(file)
                 data_frames.append(df)
             
-            # Gộp tất cả các file lại thành 1 DataFrame duy nhất
             uploaded_data = pd.concat(data_frames, ignore_index=True)
             features, missing_columns = prepare_features(uploaded_data, feature_names)
 
@@ -135,7 +137,7 @@ if uploaded_files:
         st.stop()
 
     st.subheader("Dữ liệu đầu vào (5 dòng đầu)")
-    st.dataframe(uploaded_data.head())
+    st.dataframe(uploaded_data.head(), width="stretch")
 
     if missing_columns:
         st.warning(
@@ -158,11 +160,107 @@ if uploaded_files:
             attack_count = int((result["Prediction"] == "ATTACK").sum())
             
             col1, col2 = st.columns(2)
-            col1.metric("BENIGN", benign_count)
-            col2.metric("ATTACK", attack_count)
+            col1.metric("BENIGN (Lành tính)", benign_count)
+            col2.metric("ATTACK (Tấn công)", attack_count)
+
+            # --- BIỂU ĐỒ TRỰC QUAN KẾT QUẢ ---
+            st.markdown("---")
+            st.subheader("📈 Phân tích trực quan kết quả dự đoán")
+            
+            chart_col1, chart_col2 = st.columns(2)
+
+            with chart_col1:
+                fig_pie = px.pie(
+                    names=["BENIGN", "ATTACK"],
+                    values=[benign_count, attack_count],
+                    title="Tỷ lệ phân loại cảnh báo",
+                    hole=0.4,
+                    color=["BENIGN", "ATTACK"],
+                    color_discrete_map={"BENIGN": "#2ecc71", "ATTACK": "#e74c3c"}
+                )
+                st.plotly_chart(fig_pie, width="stretch")
+
+            with chart_col2:
+                if "Attack Probability" in result.columns:
+                    fig_hist = px.histogram(
+                        result, 
+                        x="Attack Probability", 
+                        nbins=30,
+                        title="Phân phối Xác suất Tấn công (Attack Probability)",
+                        labels={"Attack Probability": "Xác suất ATTACK"},
+                        color_discrete_sequence=["#3498db"]
+                    )
+                    st.plotly_chart(fig_hist, width="stretch")
+
+            # --- ĐÁNH GIÁ ĐỘ CHÍNH XÁC (Nếu file đầu vào có cột 'Label') ---
+            if "Label" in uploaded_data.columns:
+                st.markdown("---")
+                st.subheader("📊 Đánh giá mô hình & Ma trận nhầm lẫn (Confusion Matrix)")
+
+                y_true = uploaded_data["Label"].astype(str).str.strip()
+                y_pred = result["Prediction"].astype(str).str.strip()
+
+                acc = accuracy_score(y_true, y_pred)
+                precision, recall, f1, _ = precision_recall_fscore_support(
+                    y_true, y_pred, average="weighted", zero_division=0
+                )
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Accuracy", f"{acc * 100:.2f}%")
+                c2.metric("Precision", f"{precision * 100:.2f}%")
+                c3.metric("Recall", f"{recall * 100:.2f}%")
+                c4.metric("F1-Score", f"{f1 * 100:.2f}%")
+
+                eval_col1, eval_col2 = st.columns(2)
+
+                with eval_col1:
+                    labels_cm = sorted(list(set(y_true) | set(y_pred)))
+                    cm = confusion_matrix(y_true, y_pred, labels=labels_cm)
+
+                    fig_cm, ax = plt.subplots(figsize=(5, 4))
+                    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=labels_cm, yticklabels=labels_cm, ax=ax)
+                    ax.set_xlabel("Dự đoán (Predicted)")
+                    ax.set_ylabel("Thực tế (Actual)")
+                    ax.set_title("Confusion Matrix")
+                    st.pyplot(fig_cm)
+
+                with eval_col2:
+                    with st.expander("🔍 Báo cáo chi tiết (Classification Report)", expanded=True):
+                        report_dict = classification_report(y_true, y_pred, output_dict=True)
+                        st.dataframe(pd.DataFrame(report_dict).transpose(), width="stretch")
+
+                result["Is_Correct"] = y_true == y_pred
+                incorrect_preds = result[result["Is_Correct"] == False]
+
+                if not incorrect_preds.empty:
+                    st.warning(f"⚠️ Phát hiện **{len(incorrect_preds):,}** dòng bị dự đoán **SAI** so với nhãn thực tế.")
+                    with st.expander("❌ Xem danh sách các mẫu dự đoán SAI"):
+                        st.dataframe(incorrect_preds, width="stretch")
+                else:
+                    st.success("🎉 Tất cả mẫu dữ liệu đều được dự đoán ĐÚNG 100%!")
+
+            # --- FEATURE IMPORTANCE ---
+            if hasattr(model, "feature_importances_"):
+                st.markdown("---")
+                st.subheader("⭐ Độ quan trọng của các đặc trưng (Feature Importance)")
+                
+                fi_df = pd.DataFrame({
+                    "Feature": feature_names,
+                    "Importance": model.feature_importances_
+                }).sort_values(by="Importance", ascending=True)
+
+                fig_fi = px.bar(
+                    fi_df, 
+                    x="Importance", 
+                    y="Feature", 
+                    orientation="h",
+                    title="Top đặc trưng ảnh hưởng nhiều nhất đến quyết định của Mô hình",
+                    color="Importance",
+                    color_continuous_scale="Viridis"
+                )
+                st.plotly_chart(fig_fi, width="stretch")
 
             st.subheader("Xem trước kết quả (100 dòng đầu)")
-            # Đã sửa use_container_width=True thành width="stretch"
             st.dataframe(result.head(100), width="stretch")
 
             # --- Xuất file kết quả ---
