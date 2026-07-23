@@ -197,7 +197,9 @@ if uploaded_files:
                 st.markdown("---")
                 st.subheader("📊 Đánh giá mô hình & Ma trận nhầm lẫn (Confusion Matrix)")
 
-                y_true = uploaded_data["Label"].astype(str).str.strip()
+                y_true = uploaded_data["Label"].astype(str).str.strip().apply(
+    lambda x: "BENIGN" if x.upper() == "BENIGN" else "ATTACK"
+)
                 y_pred = result["Prediction"].astype(str).str.strip()
 
                 acc = accuracy_score(y_true, y_pred)
