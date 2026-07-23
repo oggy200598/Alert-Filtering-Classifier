@@ -9,7 +9,7 @@ ENV/
 
 # Thư mục dữ liệu mạng và mô hình nặng
 data/
-models/*.joblib
+#models/*.joblib
 
 # Cấu hình VS Code cá nhân
 .vscode/
